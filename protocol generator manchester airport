@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sign Command Hex Generator</title>
+  <!-- Ensure mobile-friendly rendering -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    form { max-width: 400px; margin: auto; }
+    label { display: block; margin-bottom: 0.5em; }
+    input[type="text"], input[type="number"], button {
+      width: 100%; padding: 8px; box-sizing: border-box;
+      margin-top: 0.25em; margin-bottom: 1em;
+      font-size: 1em;
+    }
+    #output {
+      font-family: monospace;
+      background: #f9f9f9;
+      padding: 8px;
+      display: block;
+      margin-top: 0.5em;
+      word-wrap: break-word;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    table, th, td {
+      border: 1px solid black;
+    }
+    th, td {
+      padding: 8px;
+      text-align: left;
+    }
+    .switch-container {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      margin-top: 10px;
+      gap: 10px; /* Adds space between switches */
+    }
+    .switch-container input[type="checkbox"] {
+      width: 30px;
+      height: 15px;
+    }
+    .switch-container label {
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Manchester Airport Protocol String Generator</h2>
+
+<form onsubmit="return false;">
+  <label for="addr">Sign Address (hex, 2 digits):
+    <input type="text" id="addr" maxlength="2" placeholder="e.g. C1" oninput="updateAddressBinary()">
+  </label>
+
+  <div id="binaryAddress" style="font-size: 1.2em; font-weight: bold; color: #333;"></div>
+  <div style="font-size: 1em; color: gray;">(LSB is first)</div>
+
+  <div class="switch-container" id="addressDIP">
+    <!-- DIP switches will appear here -->
+  </div>
+
+  <label for="text">Display Text (decimal):
+    <input type="number" id="text" min="0" max="65535" placeholder="e.g. 1234">
+  </label>
+  <label for="bright">Brightness (decimal 0-255, 0 = Auto, 255 = 100%):
+    <input type="number" id="bright" min="0" max="255" placeholder="e.g. 2">
+    <span style="font-size: 0.8em; color: gray;">0 = Auto Brightness, 255 = 100% Brightness</span>
+  </label>
+  <button id="generateButton" onclick="generateHex()">Generate String</button>
+  <button id="clearButton" onclick="clearTable()">Clear Table</button>
+</form>
+
+<!-- Table to display generated data -->
+<h3>Generated Hex Strings</h3>
+<table id="generatedStringsTable">
+  <thead>
+    <tr>
+      <th>Address</th>
+      <th>Display Text</th>
+      <th>Brightness</th>
+      <th>Generated String</th>
+    </tr>
+  </thead>
+  <tbody>
+    <!-- Generated strings will go here -->
+  </tbody>
+</table>
+
+<script>
+  const generateButton = document.getElementById('generateButton');
+  const clearButton = document.getElementById('clearButton');
+  const generatedStringsTable = document.getElementById('generatedStringsTable').getElementsByTagName('tbody')[0];
+  const addressInput = document.getElementById('addr');
+  const binaryAddressDisplay = document.getElementById('binaryAddress');
+  const addressDIPDisplay = document.getElementById('addressDIP');
+
+  function updateAddressBinary() {
+    // Get the address input and convert to binary
+    let addrVal = parseInt(addressInput.value, 16);
+    if (isNaN(addrVal) || addrVal < 0 || addrVal > 255) {
+      binaryAddressDisplay.textContent = 'Invalid address!';
+      addressDIPDisplay.innerHTML = '';
+      return;
+    }
+
+    // Convert to binary and pad to 8 bits (LSB on the left, MSB on the right)
+    let binaryAddress = addrVal.toString(2).padStart(8, '0');
+
+    // Display the binary address with LSB on the left
+    let reversedBinaryAddress = binaryAddress.split('').reverse().join('');
+    binaryAddressDisplay.textContent = `Binary: ${reversedBinaryAddress}`;
+
+    // Create the DIP switch representation (binary -> switches, LSB on left)
+    let dipHTML = '';
+    for (let i = 0; i < 8; i++) {
+      dipHTML += `
+        <div>
+          <input type="checkbox" id="switch${i}" ${reversedBinaryAddress[i] === '1' ? 'checked' : ''} disabled>
+          <label for="switch${i}">SW${i + 1}</label>
+        </div>
+      `;
+    }
+    addressDIPDisplay.innerHTML = dipHTML;
+  }
+
+  function generateHex() {
+    // Get input values
+    const addrInputValue = addressInput.value;
+    const textInput = parseInt(document.getElementById('text').value, 10);
+    const brightInput = parseInt(document.getElementById('bright').value, 10);
+    
+    if (!addrInputValue || isNaN(textInput) || isNaN(brightInput) || brightInput < 0 || brightInput > 255) {
+      alert('Please fill in all fields correctly!');
+      return;
+    }
+
+    // Parse address as hex
+    let addrVal = parseInt(addrInputValue, 16);
+    if (isNaN(addrVal)) addrVal = 0;  // Default to 0x00 if invalid
+
+    // Ensure text fits in a 16-bit space
+    if (textInput < 0 || textInput > 65535) textInput = 0;
+
+    // Break out the 16-bit display value into low and high bytes (little-endian)
+    let textLow = textInput & 0xFF;
+    let textHigh = (textInput >> 8) & 0xFF;
+
+    // Generate data bytes
+    const bytes = [0x02, addrVal, textLow, textHigh, 0x00, 0x00, brightInput];
+
+    // Calculate checksum (sum of all bytes in array)
+    let sum = 0;
+    for (let b of bytes) {
+      sum = sum + b;
+    }
+
+    // Extract low and high bytes of the checksum
+    let checksumLow = sum & 0xFF;
+    let checksumHigh = (sum >> 8) & 0xFF;
+
+    // Add checksum to the bytes array
+    bytes.push(checksumLow, checksumHigh);
+
+    // Special check for high byte being 0x02 (to append 0xFA)
+    if (checksumHigh === 0x02) {
+      bytes.push(0xFA);
+    }
+
+    // Convert bytes to hex string
+    const hexString = bytes.map(b => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
+
+    // Add a new row to the table
+    const newRow = generatedStringsTable.insertRow();
+    newRow.insertCell(0).textContent = addrInputValue;
+    newRow.insertCell(1).textContent = textInput;
+    newRow.insertCell(2).textContent = brightInput;
+    newRow.insertCell(3).textContent = hexString;
+
+    // Ensure we don't exceed 10 rows in the table
+    if (generatedStringsTable.rows.length > 10) {
+      generatedStringsTable.deleteRow(0);  // Remove the first row if there are more than 10
+    }
+  }
+
+  // Function to clear the table
+  function clearTable() {
+    while (generatedStringsTable.rows.length > 0) {
+      generatedStringsTable.deleteRow(0);
+    }
+  }
+</script>
+
+</body>
+</html>
